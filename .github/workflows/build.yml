@@ -20,10 +20,11 @@ permissions:
 
 env:
   PROJECT: armedf
-  # This project is set up for Quartus 20.1 (LAST_QUARTUS_VERSION in armedf.qsf);
-  # 17.0.2 is the fallback.
-  IMAGE_PRIMARY: jotego/jtcore20
-  IMAGE_FALLBACK: theypsilon/quartus-lite-c5:17.0.2.docker0
+  # Quartus 17.0.2 Lite (the MiSTer reference version). quartus_map crashed at
+  # start-up in jotego's Quartus 20.1 image with this project; it is kept as
+  # the fallback only.
+  IMAGE_PRIMARY: theypsilon/quartus-lite-c5:17.0.2.docker0
+  IMAGE_FALLBACK: jotego/jtcore20
 
 jobs:
   compile:
