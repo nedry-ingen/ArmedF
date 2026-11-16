@@ -125,12 +125,15 @@ A hidden debug menu can be accessed for all Nichibutsu 68000 (Armed F Based) tit
 
 | Option | Range |
 | --- | --- |
+| CRT Frame H | 0, -8 … -48 px (left), +4 px (right). Moves the whole frame, CRT Adjust On or Off |
 | CRT Adjust | Off / On |
 | CRT H-Size | -16 … +15 (each step ≈ 1.4 %) |
 | CRT H-Pos | -72 … +72 px, 3 px steps |
 | CRT V-Shift | -16 … +15 lines |
 
-- The games have only 8 px of blanking after the picture, so enlarging (H-Size > 0) runs the right edge into the sync: pull it back with a negative **CRT H-Pos** (about -4 px per H-Size step), then centre the whole frame with **H-sync Pos Adj**.
+- The games have only 8 px of blanking after the picture, so enlarging (H-Size > 0) runs the right edge into the sync: pull it back with a negative **CRT H-Pos** (about -4 px per H-Size step), then centre the whole frame with **CRT Frame H**.
+
+- **CRT Frame H** moves the whole frame (sync, picture and OSD together) by shifting HSync against the picture, in 8-px steps; **H-sync Pos Adj** fine-tunes it in 1-px steps. Crazy Climber 2 and Legion sit right of centre on most CRTs: start around -24. The 320-px games (Armed F, Terra Force, Kozure Ōkami, Big Fighter) have only 27 px of back porch, so their left range stops at -16 px; any setting beyond that is treated as -16.
 
 ### Dual Joystick
 
@@ -138,6 +141,7 @@ A hidden debug menu can be accessed for all Nichibutsu 68000 (Armed F Based) tit
   - **Off**: buttons 1-4 of the 1st controller (original behaviour).
   - **2nd Joystick**: the 2nd controller's D-Pad, for a twin-stick panel or two controllers (as in the Inferno and Robotron cores). Player 2's controller inputs are disabled.
   - **Right Analog**: the right analog stick of the 1st controller.
+- Crazy Climber 2's sticks are 4-way: a diagonal on either stick (left or right, D-Pad, keyboard or analog, both players) is ignored. The other games keep 8-way input. The keyboard debug-menu combo (Up + LCtrl + Spacebar) presses the right stick diagonally, so it no longer works in Crazy Climber 2.
 - Buttons 1-4 of the 1st controller keep working in every mode. In the other games the same option drives buttons 1-4, so leave it Off for them.
 
 ### Scandoubler Options

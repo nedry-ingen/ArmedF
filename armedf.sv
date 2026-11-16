@@ -243,6 +243,7 @@ localparam CONF_STR = {
     "P1oOR,H-sync Width Adj,0,1,2,3,4,5,6,7,-8,-7,-6,-5,-4,-3,-2,-1;",
     "P1oSV,V-sync Width Adj,0,1,2,3,4,5,6,7,-8,-7,-6,-5,-4,-3,-2,-1;",
     "P1-;",
+    "P1oLN,CRT Frame H,0,-8,-16,-24,-32,-40,-48,+4;",
     "P1o9,CRT Adjust,Off,On;",
     "H1P1oAE,CRT H-Size,0,+1,+2,+3,+4,+5,+6,+7,+8,+9,+10,+11,+12,+13,+14,+15,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1;",
     "H1P1oFK,CRT H-Pos,0,+3,+6,+9,+12,+15,+18,+21,+24,+27,+30,+33,+36,+39,+42,+45,+48,+51,+54,+57,+60,+63,+66,+69,+72,-72,-69,-66,-63,-60,-57,-54,-51,-48,-45,-42,-39,-36,-33,-30,-27,-24,-21,-18,-15,-12,-9,-6,-3;",
@@ -353,10 +354,10 @@ reg [15:0] sys ;
 
 always @ (posedge clk_sys ) begin 
     p1 <= 16'hffff;
-    p1[7:0] <= ~{ p1_buttons[3:0], p1_right, p1_left ,p1_down, p1_up};
+    p1[7:0] <= ~{ p1_bt_f, p1_dir_f };
      
     p2 <= 16'hffff;
-    p2[7:0] <= ~{ p2_buttons[3:0], p2_right, p2_left ,p2_down, p2_up};
+    p2[7:0] <= ~{ p2_bt_f, p2_dir_f };
     
 //    sys <= 16'hffff;
     p1[8] <= ~start1  ; 
@@ -400,6 +401,18 @@ wire        p2_left    = joy1_p2[1] | key_p2_left;
 wire        p2_down    = joy1_p2[2] | key_p2_down;
 wire        p2_up      = joy1_p2[3] | key_p2_up | status[36];
 wire [3:0]  p2_buttons = joy1_p2[7:4] | {key_p2_d, key_p2_c, key_p2_b | status[36], key_p2_a | status[36]};
+
+// Crazy Climber 2 (pcb 4) has 4-way sticks: a diagonal on either stick, left
+// or right, for either player, is ignored instead of being passed on.
+// Vectors are {Right, Left, Down, Up}; the other games keep 8-way input.
+function [3:0] no_diag(input [3:0] d, input en);
+    no_diag = (en && (d[3] | d[2]) && (d[1] | d[0])) ? 4'd0 : d;
+endfunction
+wire        cc2_4way   = pcb == 4'd4;
+wire [3:0]  p1_dir_f   = no_diag({ p1_right, p1_left, p1_down, p1_up }, cc2_4way);
+wire [3:0]  p1_bt_f    = no_diag(p1_buttons, cc2_4way);   // right stick in CC2
+wire [3:0]  p2_dir_f   = no_diag({ p2_right, p2_left, p2_down, p2_up }, cc2_4way);
+wire [3:0]  p2_bt_f    = no_diag(p2_buttons, cc2_4way);
 
 wire        start1  = joy0[8]  | joy1[8]  | key_start_1p;
 wire        start2  = joy0[9]  | joy1[9]  | key_start_2p | status[11];
@@ -637,8 +650,17 @@ arcade_video #(256,24) arcade_video
 // period (72 + H-Size) / 6 clocks, so each H-Size step is 1/72 (~1.4%).
 // The 288-px games (Crazy Climber 2, Legion) have only 8 px of front porch,
 // so H-Pos uses 3-px steps (+-72 px) to pull an enlarged picture back left.
-// The frame itself is moved with the existing H-sync Pos Adj option, so the
-// glue's frame-position input is not used here.
+// CRT Frame H moves the whole frame (HSync relative to the picture) in 8-px
+// steps, with CRT Adjust On or Off; H-sync Pos Adj fine-tunes it. The glue
+// decodes 4-px units: 0..12 = 0..-48 px, 15 = +4 px (the front porch is only
+// 8 px, so the frame can move just 4 px right). The left range is capped
+// so HSync always ends before the picture starts: the 288-px games (Crazy
+// Climber 2, Legion) have a 59-px back porch, the 320-px games only 27 px.
+wire [2:0] frame_osd = status[55:53];
+wire       frame_h288 = pcb == 4'd4 || pcb == 4'd5 || pcb == 4'd6 || pcb == 4'd7;
+wire [2:0] frame_lim  = (frame_osd == 3'd7 || frame_h288 || frame_osd <= 3'd2) ? frame_osd : 3'd2;
+wire [3:0] frame_sel  = frame_lim == 3'd7 ? 4'd15 : { frame_lim, 1'b0 };
+
 crt_adjust_glue #(
         .HTOTAL    (387),
         .VTOTAL    (263),
@@ -653,7 +675,7 @@ crt_adjust_glue #(
         .st_hsize   (status[46:42]),
         .st_hpos    (status[52:47]),
         .st_vshift  (status[17:13]),
-        .st_frame   (4'd0),
+        .st_frame   (frame_sel),
         .scandoubler(forced_scandoubler),
         .ce_in      (av_cen),
         .r_in       (av_r),
