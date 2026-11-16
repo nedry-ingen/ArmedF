@@ -1,0 +1,89 @@
+name: Build ArmedF (CRT Adjust + Dual Joystick)
+
+# Compiles armedf.qpf with Quartus in Docker, uploads the .rbf as an
+# artifact and commits it to releases/armedf_YYYYMMDD.rbf.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'armedf.sv'
+      - 'files.qip'
+      - 'armedf.qsf'
+      - 'rtl/**'
+      - 'sys/**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: write
+
+env:
+  PROJECT: armedf
+  # This project is set up for Quartus 20.1 (LAST_QUARTUS_VERSION in armedf.qsf);
+  # 17.0.2 is the fallback.
+  IMAGE_PRIMARY: jotego/jtcore20
+  IMAGE_FALLBACK: theypsilon/quartus-lite-c5:17.0.2.docker0
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - name: Compile with Quartus
+        run: |
+          IMG=$IMAGE_PRIMARY
+          docker pull "$IMG" || { IMG=$IMAGE_FALLBACK; docker pull "$IMG"; }
+          echo "Using $IMG"
+          docker run --rm --entrypoint /bin/bash -v "$(pwd)":/project -w /project "$IMG" -c '
+            set -e
+            Q=$(command -v quartus_sh || ls /opt/intelFPGA_lite/*/quartus/bin/quartus_sh /opt/intelFPGA/*/quartus/bin/quartus_sh /opt/*/quartus/bin/quartus_sh 2>/dev/null | head -n 1)
+            echo "quartus_sh: $Q"
+            "$Q" --version
+            "$Q" --flow compile '"$PROJECT"'.qpf
+          '
+
+      - name: Timing summary
+        if: always()
+        run: |
+          grep -h -A4 -i "slack" output_files/*.sta.summary 2>/dev/null | head -60 || true
+          grep -l -i "Timing requirements not met" output_files/*.rpt 2>/dev/null && echo "::warning::Timing requirements not met" || echo "Timing requirements met"
+
+      - name: Collect the .rbf
+        id: rbf
+        run: |
+          test -f "output_files/$PROJECT.rbf"
+          OUT=${PROJECT}_$(date -u +%Y%m%d).rbf
+          mkdir -p out
+          cp -v "output_files/$PROJECT.rbf" "out/$OUT"
+          echo "name=$OUT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.rbf.outputs.name }}
+          path: out/${{ steps.rbf.outputs.name }}
+
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quartus-reports
+          path: output_files/*.rpt
+          if-no-files-found: ignore
+
+      - name: Commit the .rbf to releases/
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" . || true
+          cp "out/${{ steps.rbf.outputs.name }}" releases/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add releases/
+          git commit -m "releases: ${{ steps.rbf.outputs.name }} (CRT Adjust) [skip ci]" || exit 0
+          git push
