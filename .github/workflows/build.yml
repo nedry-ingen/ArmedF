@@ -43,12 +43,21 @@ jobs:
           IMG=$IMAGE_PRIMARY
           docker pull "$IMG" || { IMG=$IMAGE_FALLBACK; docker pull "$IMG"; }
           echo "Using $IMG"
+          # armedf.qsf was saved by Quartus 20.1, which renamed one TimeQuest
+          # setting; give 17.0.2 the name it knows (CI checkout only).
+          if [[ "$IMG" == *17.0* ]]; then
+            sed -i 's/TIMING_ANALYZER_MULTICORNER_ANALYSIS/TIMEQUEST_MULTICORNER_ANALYSIS/' "$PROJECT.qsf"
+          fi
           docker run --rm --entrypoint /bin/bash -v "$(pwd)":/project -w /project "$IMG" -c '
-            set -e
             Q=$(command -v quartus_sh || ls /opt/intelFPGA_lite/*/quartus/bin/quartus_sh /opt/intelFPGA/*/quartus/bin/quartus_sh /opt/*/quartus/bin/quartus_sh 2>/dev/null | head -n 1)
             echo "quartus_sh: $Q"
             "$Q" --version
-            "$Q" --flow compile '"$PROJECT"'.qpf
+            "$Q" --flow compile '"$PROJECT"'.qpf; RC=$?
+            if [ $RC != 0 ]; then
+              echo "===== tail of the last report ====="
+              ls -t output_files/*.rpt *.rpt 2>/dev/null | head -n 1 | xargs -r tail -n 60
+            fi
+            exit $RC
           '
 
       - name: Timing summary
