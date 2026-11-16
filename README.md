@@ -119,6 +119,27 @@ A hidden debug menu can be accessed for all Nichibutsu 68000 (Armed F Based) tit
 
 - There are two H/V toggles, H/V-sync positioning adjust and H/V-sync width adjust. Positioning will move the display for centering on CRT display. The sync width adjust can be used to for sync issues (rolling) without modifying the video timings.
 
+### CRT Adjust
+
+- [**CRT Adjust**](https://github.com/rmonic79/MiSTer-CRT-Adjust) (rmonic79, core-side variant) in **Video Settings** resizes and moves the analog 15 kHz picture so it fits your CRT without the monitor losing sync. With **CRT Adjust** Off the video is the untouched native signal; while it is On, HDMI follows the adjustment too. It turns itself off when the scandoubler is in use.
+
+| Option | Range |
+| --- | --- |
+| CRT Adjust | Off / On |
+| CRT H-Size | -16 … +15 (each step ≈ 1.4 %) |
+| CRT H-Pos | -72 … +72 px, 3 px steps |
+| CRT V-Shift | -16 … +15 lines |
+
+- The games have only 8 px of blanking after the picture, so enlarging (H-Size > 0) runs the right edge into the sync: pull it back with a negative **CRT H-Pos** (about -4 px per H-Size step), then centre the whole frame with **H-sync Pos Adj**.
+
+### Dual Joystick
+
+- **Crazy Climber 2** uses two 4-way joysticks; the right stick is wired to buttons 1-4 (Up, Down, Left, Right). The **Dual Joystick** option picks what drives player 1's right stick:
+  - **Off**: buttons 1-4 of the 1st controller (original behaviour).
+  - **2nd Joystick**: the 2nd controller's D-Pad, for a twin-stick panel or two controllers (as in the Inferno and Robotron cores). Player 2's controller inputs are disabled.
+  - **Right Analog**: the right analog stick of the 1st controller.
+- Buttons 1-4 of the 1st controller keep working in every mode. In the other games the same option drives buttons 1-4, so leave it Off for them.
+
 ### Scandoubler Options
 
 - Additional toggle to enable the scandoubler without changing ini settings and new scanline option for 100% is available, this draws a black line every other frame. Below is an example.

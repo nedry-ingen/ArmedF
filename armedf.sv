@@ -243,6 +243,11 @@ localparam CONF_STR = {
     "P1oOR,H-sync Width Adj,0,1,2,3,4,5,6,7,-8,-7,-6,-5,-4,-3,-2,-1;",
     "P1oSV,V-sync Width Adj,0,1,2,3,4,5,6,7,-8,-7,-6,-5,-4,-3,-2,-1;",
     "P1-;",
+    "P1o9,CRT Adjust,Off,On;",
+    "H1P1oAE,CRT H-Size,0,+1,+2,+3,+4,+5,+6,+7,+8,+9,+10,+11,+12,+13,+14,+15,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1;",
+    "H1P1oFK,CRT H-Pos,0,+3,+6,+9,+12,+15,+18,+21,+24,+27,+30,+33,+36,+39,+42,+45,+48,+51,+54,+57,+60,+63,+66,+69,+72,-72,-69,-66,-63,-60,-57,-54,-51,-48,-45,-42,-39,-36,-33,-30,-27,-24,-21,-18,-15,-12,-9,-6,-3;",
+    "H1P1ODH,CRT V-Shift,0,+1,+2,+3,+4,+5,+6,+7,+8,+9,+10,+11,+12,+13,+14,+15,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1;",
+    "P1-;",
     "P2,Pause Options;",
     "P2-;",
     "P2OK,Pause when OSD is open,Off,On;",
@@ -261,6 +266,8 @@ localparam CONF_STR = {
     "P3-;",
     "DIP;",
     "-;",
+    "OIJ,Dual Joystick,Off,2nd Joystick,Right Analog;",
+    "-;",
     "R0,Reset;",
     "J1,Button 1,Button 2,Button 3,Start,Coin,Pause;",
     "jn,A,B,X,R,L,Start;",           // name mapping
@@ -275,6 +282,7 @@ wire  [1:0] buttons;
 wire [63:0] status;
 wire [10:0] ps2_key;
 wire [15:0] joy0, joy1;
+wire [15:0] joy0_ra;     // right analog stick of the 1st controller
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
@@ -284,7 +292,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
     .buttons(buttons),
     .ps2_key(ps2_key),
     .status(status),
-    .status_menumask(direct_video),
+    .status_menumask({~status[41], direct_video}), // H1: CRT Adjust amounts
     .forced_scandoubler(hps_forced_scandoubler),
     .gamma_bus(gamma_bus),
     .direct_video(direct_video),
@@ -300,7 +308,8 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
     .ioctl_wait(ioctl_wait),
 
     .joystick_0(joy0),
-    .joystick_1(joy1)
+    .joystick_1(joy1),
+    .joystick_r_analog_0(joy0_ra)
 );
 
 // INPUT
@@ -362,17 +371,35 @@ always @ (posedge clk_sys ) begin
     dsw2 <=  { 8'b0, sw[1] };
 end
 
+// Dual joystick (Crazy Climber 2 has two 4-way sticks; the right stick sits on
+// the button 1-4 inputs: 1 = Up, 2 = Down, 3 = Left, 4 = Right, as in MAME).
+//   Off          : right stick on buttons 1-4 of the 1st controller (original)
+//   2nd Joystick : player 1's right stick is the 2nd controller's D-Pad (like
+//                  Inferno/Robotron); player 2's controller inputs are off
+//   Right Analog : player 1's right stick is the 1st controller's right analog
+// Buttons 1-4 of the 1st controller keep working in every mode.
+wire [1:0]  dual_mode  = status[19:18];
+wire        dual_2nd   = dual_mode == 2'd1;
+wire        dual_ra    = dual_mode == 2'd2;
+wire        ra_up      = $signed(joy0_ra[15:8]) < -8'sd32;
+wire        ra_down    = $signed(joy0_ra[15:8]) >  8'sd32;
+wire        ra_left    = $signed(joy0_ra[ 7:0]) < -8'sd32;
+wire        ra_right   = $signed(joy0_ra[ 7:0]) >  8'sd32;
+wire [3:0]  p1_rstick  = dual_2nd ? { joy1[0], joy1[1], joy1[2], joy1[3] } :   // {R,L,D,U}
+                         dual_ra  ? { ra_right, ra_left, ra_down, ra_up }   : 4'd0;
+wire [15:0] joy1_p2    = dual_2nd ? 16'd0 : joy1;
+
 wire        p1_right   = joy0[0] | key_p1_right;
 wire        p1_left    = joy0[1] | key_p1_left;
 wire        p1_down    = joy0[2] | key_p1_down;
 wire        p1_up      = joy0[3] | key_p1_up;
-wire [3:0]  p1_buttons = joy0[7:4] | {key_p1_d, key_p1_c, key_p1_b, key_p1_a};
+wire [3:0]  p1_buttons = joy0[7:4] | p1_rstick | {key_p1_d, key_p1_c, key_p1_b, key_p1_a};
 
-wire        p2_right   = joy1[0] | key_p2_right;
-wire        p2_left    = joy1[1] | key_p2_left;
-wire        p2_down    = joy1[2] | key_p2_down;
-wire        p2_up      = joy1[3] | key_p2_up | status[36];
-wire [3:0]  p2_buttons = joy1[7:4] | {key_p2_d, key_p2_c, key_p2_b | status[36], key_p2_a | status[36]};
+wire        p2_right   = joy1_p2[0] | key_p2_right;
+wire        p2_left    = joy1_p2[1] | key_p2_left;
+wire        p2_down    = joy1_p2[2] | key_p2_down;
+wire        p2_up      = joy1_p2[3] | key_p2_up | status[36];
+wire [3:0]  p2_buttons = joy1_p2[7:4] | {key_p2_d, key_p2_c, key_p2_b | status[36], key_p2_a | status[36]};
 
 wire        start1  = joy0[8]  | joy1[8]  | key_start_1p;
 wire        start2  = joy0[9]  | joy1[9]  | key_start_2p | status[11];
@@ -575,6 +602,10 @@ pause #(8,8,8,72) pause
 wire [23:0] rgb_pause_out;
 wire dim_video;
 
+// arcade_video outputs go to CRT Adjust instead of straight to VGA_*
+wire [7:0] av_r, av_g, av_b;
+wire       av_hs, av_vs, av_de, av_cen;
+
 arcade_video #(256,24) arcade_video
 (
         .*,
@@ -589,7 +620,55 @@ arcade_video #(256,24) arcade_video
         .HSync(hsync),
         .VSync(vsync),
 
-        .fx(scan_lines)
+        .fx(scan_lines),
+
+        .CE_PIXEL(av_cen),
+        .VGA_R(av_r),
+        .VGA_G(av_g),
+        .VGA_B(av_b),
+        .VGA_HS(av_hs),
+        .VGA_VS(av_vs),
+        .VGA_DE(av_de)
+);
+
+// CRT Adjust (https://github.com/rmonic79/MiSTer-CRT-Adjust), core-side.
+// Native timing (rtl/video_timing.v): 6 MHz pixel from the 72 MHz clk_sys
+// (12 clocks), 387 x 263 total, 288 or 320 px active -> CONTENTSHIFT. Read
+// period (72 + H-Size) / 6 clocks, so each H-Size step is 1/72 (~1.4%).
+// The 288-px games (Crazy Climber 2, Legion) have only 8 px of front porch,
+// so H-Pos uses 3-px steps (+-72 px) to pull an enlarged picture back left.
+// The frame itself is moved with the existing H-sync Pos Adj option, so the
+// glue's frame-position input is not used here.
+crt_adjust_glue #(
+        .HTOTAL    (387),
+        .VTOTAL    (263),
+        .HPOS_MODE (1),
+        .RD_INC    (6),
+        .RD_BASE   (72),
+        .HPOS_STEP (3)          // +-72 px: room to re-centre an enlarged picture
+) crt_adjust_glue
+(
+        .clk        (clk_sys),
+        .enable     (status[41]),
+        .st_hsize   (status[46:42]),
+        .st_hpos    (status[52:47]),
+        .st_vshift  (status[17:13]),
+        .st_frame   (4'd0),
+        .scandoubler(forced_scandoubler),
+        .ce_in      (av_cen),
+        .r_in       (av_r),
+        .g_in       (av_g),
+        .b_in       (av_b),
+        .hs_raw     (av_hs),
+        .vs_in      (av_vs),
+        .de_in      (av_de),
+        .ce_out     (CE_PIXEL),
+        .r_out      (VGA_R),
+        .g_out      (VGA_G),
+        .b_out      (VGA_B),
+        .hs_out     (VGA_HS),
+        .vs_out     (VGA_VS),
+        .de_out     (VGA_DE)
 );
 
 /*     Phase Accumulator Increments (Fractional Size 32, look up size 8 bit, total 40 bits)
